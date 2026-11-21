@@ -1,6 +1,8 @@
 # Physical AI on Amazon EKS — Isaac Lab robot-learning demo
 
-Run every command from the repo root. Cluster `isaaclab-cluster` in ap-northeast-2 (Seoul): an existing VPC with private subnets in two AZs, 2a and 2b (nodes), and public subnets in 2a/2c (ALB), plus an on-demand capacity reservation for 4× g6e.4xlarge (NVIDIA L40S) in ap-northeast-2b.
+For details, please refer to my blog: [Physical AI on EKS: NVIDIA Isaac Lab training for the Unitree Go2](https://route179.dev/2026/11/20/physical-ai-on-eks-isaac-lab-unitree-go2/).
+
+Run every command from the repo root. For my setup, the cluster `isaaclab-cluster` is deployed in ap-northeast-2 (Seoul) using an existing VPC with private subnets in two AZs, 2a and 2b (nodes), and public subnets in 2a/2c (ALB), plus an on-demand capacity reservation for 4× g6e.4xlarge (NVIDIA L40S) in ap-northeast-2b. Adjust the values based on your own environment.
 
 ## 0. Your values
 ```bash
