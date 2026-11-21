@@ -164,7 +164,7 @@ echo ${GURL}/d/isaaclab-eks
 ```
 Want: sign in with your IAM Identity Center user; dashboard "Isaac Lab on EKS — robots learning live".
 
-## 14. Go2 obstacle course on 8083
+## 14. Go2 obstacle course
 ```bash
 export IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless NUM_ENVS=4096 RUNS=1 VIZ="" VISIBLE_TILES=""
 kubectl -n isaac create configmap promhook --from-file=isaac/promhook.py --from-file=isaac/democtl.py --from-file=terrain/demotasks.py --dry-run=client -o yaml | kubectl apply -f -
@@ -198,7 +198,7 @@ kubectl get nodepool gpu -o jsonpath='{.spec.disruption.budgets}'               
 ```
 Change code: update the ConfigMap (step 14), then `kubectl -n isaac rollout restart deploy/play-go2 deploy/play-go2rough` (each viewer restarts in place: about 2 min blank). Training picks the new code up at its next run.
 
-## 17. Public viewers: ALB + Cognito sign-in on 443
+## 17. Public viewers: ALB + Cognito sign-in
 ```bash
 # AWS Load Balancer Controller (Pod Identity). Skip create-policy if AWSLoadBalancerControllerIAMPolicy already exists in the account.
 curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.6.2/docs/install/iam_policy.json -o /tmp/lbc-iam-policy.json
@@ -239,7 +239,7 @@ aws cognito-idp update-user-pool-client --user-pool-id ${POOL_ID} --client-id ${
 Want: `curl -sk -o /dev/null -w '%{http_code}\n' https://$ALB_DNS/play/` → `302` (anonymous → Cognito sign-in). Browser: `https://$ALB_DNS/` → accept the certificate warning once → sign in as `viewer` → `/play/` `/train/` `/obstacle/` `/train-obstacle/`.
 Teardown: `kubectl -n isaac delete ingress isaac-viewers` while the Load Balancer Controller is still installed (otherwise the ALB is left behind), then delete the Cognito user pool and the ACM certificate.
 
-## 18. Obstacle training loop on 8084 / ALB `/train-obstacle/`
+## 18. Obstacle training loop
 ```bash
 export IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless ROBOT=go2obstacle TASK=Demo-Velocity-ObstacleCourse-Compact-UnitreeGo2 \
   NUM_ENVS=4096 MAX_ITER=600 RUNS=100000 TRAIN_FOCUS="" VISIBLE_TILES=0-4,0-5      # viewer: 30 robots, one pinned to each of the 30 tiles
