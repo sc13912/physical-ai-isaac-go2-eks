@@ -1,7 +1,7 @@
 # Viewers behind an internet-facing ALB: HTTPS 443 only, Cognito sign-in on every request before anything is forwarded.
 # Render with an EXPLICIT variable list (the nginx config below uses $host/$http_upgrade, which must survive):
-#   envsubst '$CERT_ARN $PUBLIC_SUBNETS $COGNITO_POOL_ARN $COGNITO_CLIENT_ID $COGNITO_DOMAIN' < k8s/alb-ingress.yaml | kubectl apply -f -
-# Path: browser -> ALB (public 2a+2c) -> viewer-proxy (nginx: strips /play /train /obstacle /train-obstacle, proxies HTTP + WebSocket)
+#   envsubst '$CERT_ARN $PUBLIC_SUBNETS $ALB_AZS $COGNITO_POOL_ARN $COGNITO_CLIENT_ID $COGNITO_DOMAIN' < k8s/alb-ingress.yaml | kubectl apply -f -
+# Path: browser -> ALB (public subnets) -> viewer-proxy (nginx: strips /play /train /obstacle /train-obstacle, proxies HTTP + WebSocket)
 #       -> ClusterIP Services -> Viser pods on 8080.
 apiVersion: v1
 kind: Service
@@ -80,7 +80,7 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/group.name: isaac-viewers
     alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/subnets: ${PUBLIC_SUBNETS}   # public 2a, public 2c
+    alb.ingress.kubernetes.io/subnets: ${PUBLIC_SUBNETS}
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'                                # no HTTP listener at all
     alb.ingress.kubernetes.io/certificate-arn: ${CERT_ARN}
@@ -170,7 +170,7 @@ spec:
               - matchExpressions:
                   - key: topology.kubernetes.io/zone
                     operator: In
-                    values: ["ap-northeast-2a", "ap-northeast-2c"]   # ALB AZs; a target in 2b would be Target.NotInUse
+                    values: ${ALB_AZS}   # the ALB's AZs (README step 17); a target outside them would be Target.NotInUse
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true

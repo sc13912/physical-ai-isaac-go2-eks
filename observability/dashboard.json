@@ -42,7 +42,7 @@
    "id": 2,
    "type": "stat",
    "title": "GPUs online",
-   "description": "L40S GPUs reporting to DCGM (5 reserved g6e.4xlarge nodes).",
+   "description": "L40S GPUs reporting to DCGM (one per g6e.4xlarge node).",
    "datasource": {
     "type": "prometheus",
     "uid": "${DS}"
@@ -874,7 +874,7 @@
   {
    "id": 20,
    "type": "row",
-   "title": "GPUs (NVIDIA DCGM exporter \u00b7 NVIDIA L40S on g6e.4xlarge, reserved)",
+   "title": "GPUs (NVIDIA DCGM exporter \u00b7 NVIDIA L40S on g6e.4xlarge)",
    "collapsed": false,
    "gridPos": {
     "x": 0,
