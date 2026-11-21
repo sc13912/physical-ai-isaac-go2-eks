@@ -1,16 +1,16 @@
-# Rendered with envsubst '$CLUSTER_SG $SUBNET_2A $SUBNET_2B $CAPACITY_RESERVATION_ID'. GPU pool: single-GPU g6e (L40S 48 GB, reserved) / g7e (RTX PRO 6000 96 GB), max 4 GPUs.
+# Rendered with envsubst '$CLUSTER_NAME $CLUSTER_SG $PRIVATE_SUBNET_1 $PRIVATE_SUBNET_2 $CAPACITY_RESERVATION_ID'. GPU pool: single-GPU g6e (L40S 48 GB, reserved) / g7e (RTX PRO 6000 96 GB), max 4 GPUs.
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: gpu
 spec:
-  role: KarpenterNodeRole-isaaclab-cluster
+  role: KarpenterNodeRole-${CLUSTER_NAME}
   amiSelectorTerms:
     - alias: al2023@v20261031          # AL2023 NVIDIA variant auto-selected for GPU types
   subnetSelectorTerms:
-    - id: ${SUBNET_2A}                 # private 2a
-    - id: ${SUBNET_2B}                 # private 2b (reservation AZ)
-  capacityReservationSelectorTerms:   # g6e.4xlarge on-demand reservation(s) in ap-northeast-2b; one `- id:` per reservation; no reservation: delete these 2 lines
+    - id: ${PRIVATE_SUBNET_1}
+    - id: ${PRIVATE_SUBNET_2}
+  capacityReservationSelectorTerms:   # g6e.4xlarge on-demand reservation(s) in a private subnet's AZ; one `- id:` per reservation; no reservation: delete these 2 lines
     - id: ${CAPACITY_RESERVATION_ID}
   securityGroupSelectorTerms:
     - id: ${CLUSTER_SG}                # EKS cluster SG (same as the system nodegroup)

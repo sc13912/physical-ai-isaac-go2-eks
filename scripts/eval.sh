@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: scripts/eval.sh CHECKPOINT DIFFICULTY [NAME] [TASK] [TERRAIN_SEED]   -> per-station pass/fall/stuck for 120 robots (20 per station), 6000 steps
 set -e
-export IMAGE=${IMAGE:-$(aws sts get-caller-identity --query Account --output text).dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless} CHECKPOINT=$1 PLAY_DIFFICULTY=$2
+export IMAGE=${IMAGE:-$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_DEFAULT_REGION:?set AWS_DEFAULT_REGION (README step 0)}.amazonaws.com/isaac-lab:3.0.0-kitless} CHECKPOINT=$1 PLAY_DIFFICULTY=$2
 kubectl -n isaac delete pod play-${3:-eval} --ignore-not-found --wait=true >/dev/null
 ROBOT=${3:-eval} TASK=${4:-Demo-Velocity-ObstacleCourse-Visible-UnitreeGo2} SELFTEST=3 VX_MAX=1.0 VY_MAX=1.0 WZ_MAX=1.0 PUSH=1.0 PRESETS=presets=newton_mjwarp \
   envsubst "\$IMAGE \$ROBOT \$TASK \$CHECKPOINT \$SELFTEST \$VX_MAX \$VY_MAX \$WZ_MAX \$PUSH \$PRESETS \$PLAY_DIFFICULTY" < "$(dirname "$0")/../k8s/play-pod.yaml" \

@@ -1,13 +1,13 @@
-# Rendered with envsubst ($AWS_ACCOUNT_ID $VPC_ID $SUBNET_2A $SUBNET_2B $ADMIN_CIDR). Based on the Karpenter v1.15
+# Rendered with envsubst ($AWS_ACCOUNT_ID $AWS_DEFAULT_REGION $CLUSTER_NAME $VPC_ID $PRIVATE_AZ_1 $PRIVATE_SUBNET_1 $PRIVATE_AZ_2 $PRIVATE_SUBNET_2 $ADMIN_CIDR). Based on the Karpenter v1.15
 # getting-started ClusterConfig; deltas: existing VPC private subnets, API endpoint limited to ADMIN_CIDR, EFS CSI add-on.
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 metadata:
-  name: isaaclab-cluster
-  region: ap-northeast-2
+  name: ${CLUSTER_NAME}
+  region: ${AWS_DEFAULT_REGION}
   version: "1.36"
   tags:
-    karpenter.sh/discovery: isaaclab-cluster
+    karpenter.sh/discovery: ${CLUSTER_NAME}
     project: physical-ai-eks
 
 kubeSchedulerConfig:
@@ -19,8 +19,8 @@ vpc:
   id: ${VPC_ID}
   subnets:
     private:
-      ap-northeast-2a: { id: ${SUBNET_2A} }
-      ap-northeast-2b: { id: ${SUBNET_2B} }
+      ${PRIVATE_AZ_1}: { id: ${PRIVATE_SUBNET_1} }   # keyed by AZ (README step 3 looks it up)
+      ${PRIVATE_AZ_2}: { id: ${PRIVATE_SUBNET_2} }
   clusterEndpoints:
     publicAccess: true
     privateAccess: true
@@ -31,17 +31,17 @@ iam:
   podIdentityAssociations:
   - namespace: kube-system
     serviceAccountName: karpenter
-    roleName: isaaclab-cluster-karpenter
+    roleName: ${CLUSTER_NAME}-karpenter
     permissionPolicyARNs:
-    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerNodeLifecyclePolicy-isaaclab-cluster
-    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerIAMIntegrationPolicy-isaaclab-cluster
-    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerEKSIntegrationPolicy-isaaclab-cluster
-    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerInterruptionPolicy-isaaclab-cluster
-    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerResourceDiscoveryPolicy-isaaclab-cluster
-    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerZonalShiftPolicy-isaaclab-cluster
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerNodeLifecyclePolicy-${CLUSTER_NAME}
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerIAMIntegrationPolicy-${CLUSTER_NAME}
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerEKSIntegrationPolicy-${CLUSTER_NAME}
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerInterruptionPolicy-${CLUSTER_NAME}
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerResourceDiscoveryPolicy-${CLUSTER_NAME}
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerZonalShiftPolicy-${CLUSTER_NAME}
 
 iamIdentityMappings:
-- arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/KarpenterNodeRole-isaaclab-cluster"
+- arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/KarpenterNodeRole-${CLUSTER_NAME}"
   username: system:node:{{EC2PrivateDNSName}}
   groups:
   - system:bootstrappers
