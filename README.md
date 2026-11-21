@@ -2,7 +2,7 @@
 
 Run every command from the repo root. Cluster `isaaclab-cluster` in ap-northeast-2 (Seoul): an existing VPC with private subnets in two AZs, 2a and 2b (nodes), and public subnets in 2a/2c (ALB), plus an on-demand capacity reservation for 4× g6e.4xlarge (NVIDIA L40S) in ap-northeast-2b.
 
-## 0. Your values (set once per shell)
+## 0. Your values
 ```bash
 export AWS_DEFAULT_REGION=ap-northeast-2 CLUSTER_NAME=isaaclab-cluster
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -20,7 +20,7 @@ aws sts get-caller-identity
 ```
 Want: eksctl 0.231.0, kubectl v1.36.6, helm v4.3.1, and your account ID.
 
-## 2. Karpenter IAM (upstream CloudFormation)
+## 2. Karpenter IAM
 ```bash
 export AWS_DEFAULT_REGION=ap-northeast-2 CLUSTER_NAME=isaaclab-cluster KARPENTER_VERSION=1.15.1
 curl -fsSL https://raw.githubusercontent.com/aws/karpenter-provider-aws/v${KARPENTER_VERSION}/website/content/en/preview/getting-started/getting-started-with-karpenter/cloudformation.yaml > infra/karpenter-cfn.yaml
@@ -65,7 +65,7 @@ helm repo add nvdp https://nvidia.github.io/k8s-device-plugin && helm repo updat
 helm upgrade -i nvdp nvdp/nvidia-device-plugin --version 0.20.1 -n nvidia-device-plugin --create-namespace
 ```
 
-## 7. GPU smoke test (one GPU node, Go2 4096 envs × 30 iterations)
+## 7. GPU smoke test
 ```bash
 export IMAGE=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless
 kubectl create ns isaac --dry-run=client -o yaml | kubectl apply -f -
@@ -96,7 +96,7 @@ helm upgrade -i kueue oci://registry.k8s.io/kueue/charts/kueue --version 0.20.4 
 kubectl apply -f k8s/kueue.yaml
 ```
 
-## 10. Training jobs (4 robots, 1 GPU each)
+## 10. Training jobs
 ```bash
 export IMAGE=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless
 export NUM_ENVS=4096 RUNS=1 VIZ="" TRAIN_FOCUS="" VISIBLE_TILES=""
@@ -108,7 +108,7 @@ ROBOT=g1     TASK=Isaac-Velocity-Flat-G1         MAX_ITER=1500 envsubst '$IMAGE 
 kubectl -n isaac get workloads,jobs,pods -o wide; kubectl get nodeclaims
 ```
 
-## 11. Watch the robots (kubectl port-forward to localhost; nothing is exposed publicly)
+## 11. Watch the robots
 ```bash
 kubectl -n isaac wait --for=condition=complete job/train-go2long --timeout=60m   # the flat-walking brain from step 10
 # trained Go2 + "Demo controls" (stage picker, joystick, push), always-on Deployment (self-heals), not queued
@@ -139,7 +139,7 @@ aws amp create-scraper --alias isaaclab --tags project=physical-ai-eks \
 ```
 Want: `aws amp list-scrapers --query 'scrapers[].status'` → ACTIVE (~15 min).
 
-## 13. Amazon Managed Grafana (sign-in via IAM Identity Center)
+## 13. Amazon Managed Grafana
 ```bash
 export AWS_DEFAULT_REGION=ap-northeast-2 ACC=${AWS_ACCOUNT_ID} SSO_USER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # your IAM Identity Center user ID
 cat > /tmp/amg-trust.json <<EOF
@@ -164,7 +164,7 @@ echo ${GURL}/d/isaaclab-eks
 ```
 Want: sign in with your IAM Identity Center user; dashboard "Isaac Lab on EKS — robots learning live".
 
-## 14. Go2 obstacle course on 8083 (custom task `Demo-Velocity-ObstacleCourse-Visible-UnitreeGo2`, terrain/demotasks.py)
+## 14. Go2 obstacle course on 8083
 ```bash
 export IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless NUM_ENVS=4096 RUNS=1 VIZ="" VISIBLE_TILES=""
 kubectl -n isaac create configmap promhook --from-file=isaac/promhook.py --from-file=isaac/democtl.py --from-file=terrain/demotasks.py --dry-run=client -o yaml | kubectl apply -f -
@@ -184,13 +184,13 @@ ROBOT=go2rough TASK=Demo-Velocity-ObstacleCourse-Visible-UnitreeGo2 NUM_ENVS=12 
 setsid nohup ./scripts/viewer-forward.sh 8083 app=isaac-play,robot=go2rough >/tmp/fwd-8083.log 2>&1 < /dev/null &
 ```
 
-## 15. Terrain pass test (per station: pass / fall / stuck)
+## 15. Terrain pass test
 ```bash
 ./scripts/eval.sh "$CHECKPOINT" 0.55,0.75 e1 Demo-Velocity-ObstacleCourse-Visible-UnitreeGo2 42   # 120 robots, 20 per station, ~4 min
 ```
 Want: every station 100% pass (our runs: `results/eval-results.log`).
 
-## 16. Health check (all three self-heal: crash, stalled sim > ~5 min, lost pod)
+## 16. Health check
 ```bash
 kubectl -n isaac get deploy play-go2 play-go2rough; kubectl -n isaac get pods -l app=isaac-train,robot=go2   # RESTARTS should stay low
 kubectl -n isaac get events --field-selector reason=Unhealthy | grep -i liveness                           # want: nothing
@@ -198,7 +198,7 @@ kubectl get nodepool gpu -o jsonpath='{.spec.disruption.budgets}'               
 ```
 Change code: update the ConfigMap (step 14), then `kubectl -n isaac rollout restart deploy/play-go2 deploy/play-go2rough` (each viewer restarts in place: about 2 min blank). Training picks the new code up at its next run.
 
-## 17. Public viewers: ALB + Cognito sign-in on 443 (`k8s/alb-ingress.yaml`)
+## 17. Public viewers: ALB + Cognito sign-in on 443
 ```bash
 # AWS Load Balancer Controller (Pod Identity). Skip create-policy if AWSLoadBalancerControllerIAMPolicy already exists in the account.
 curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.6.2/docs/install/iam_policy.json -o /tmp/lbc-iam-policy.json
@@ -239,7 +239,7 @@ aws cognito-idp update-user-pool-client --user-pool-id ${POOL_ID} --client-id ${
 Want: `curl -sk -o /dev/null -w '%{http_code}\n' https://$ALB_DNS/play/` → `302` (anonymous → Cognito sign-in). Browser: `https://$ALB_DNS/` → accept the certificate warning once → sign in as `viewer` → `/play/` `/train/` `/obstacle/` `/train-obstacle/`.
 Teardown: `kubectl -n isaac delete ingress isaac-viewers` while the Load Balancer Controller is still installed (otherwise the ALB is left behind), then delete the Cognito user pool and the ACM certificate.
 
-## 18. Obstacle training loop on 8084 / ALB `/train-obstacle/` (each cycle: rough-terrain brain → 600 it on the compact 5 x 6 course, ~13 min)
+## 18. Obstacle training loop on 8084 / ALB `/train-obstacle/`
 ```bash
 export IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-2.amazonaws.com/isaac-lab:3.0.0-kitless ROBOT=go2obstacle TASK=Demo-Velocity-ObstacleCourse-Compact-UnitreeGo2 \
   NUM_ENVS=4096 MAX_ITER=600 RUNS=100000 TRAIN_FOCUS="" VISIBLE_TILES=0-4,0-5      # viewer: 30 robots, one pinned to each of the 30 tiles
