@@ -1,0 +1,4 @@
+# local-only working files (diagram sources, icons) — never pushed
+.archive/
+.DS_Store
+__pycache__/
