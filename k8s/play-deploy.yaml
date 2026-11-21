@@ -1,0 +1,96 @@
+# Always-on viewer (8080 / 8083 / ALB /play /obstacle). Rendered with
+# envsubst '$IMAGE $ROBOT $TASK $CHECKPOINT $NUM_ENVS $VX_MAX $VY_MAX $WZ_MAX $PUSH $PRESETS $PLAY_DIFFICULTY $CONFIGMAP'
+# Self-heals: crash -> container restart; sim loop stalled > ~5 min -> liveness restart; node lost -> rescheduled.
+# One-shot runs (selftest / eval) keep using play-pod.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: play-${ROBOT}
+  namespace: isaac
+  labels:
+    app: isaac-play
+    robot: ${ROBOT}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # every GPU is in use: the old pod stops before the new one starts
+  selector:
+    matchLabels:
+      app: isaac-play
+      robot: ${ROBOT}
+  template:
+    metadata:
+      labels:
+        app: isaac-play
+        robot: ${ROBOT}
+    spec:
+      terminationGracePeriodSeconds: 10
+      nodeSelector:
+        workload: isaac
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: play
+          image: ${IMAGE}
+          command: ["bash", "-c"]
+          args:
+            - >-
+              rm -f /tmp/heartbeat; exec isaaclab play --rl_library rsl_rl --task ${TASK} --num_envs ${NUM_ENVS}
+              --checkpoint ${CHECKPOINT} --real-time --viz viser --external_callback promhook.start ${PRESETS}
+          env:
+            - name: PYTHONPATH
+              value: /opt/demo
+            - name: DEMO_CONTROLS
+              value: "1"
+            - name: DEMO_VISIBLE_ENVS
+              value: "${NUM_ENVS}"
+            - name: DEMO_VX_MAX
+              value: "${VX_MAX}"
+            - name: DEMO_VY_MAX
+              value: "${VY_MAX}"
+            - name: DEMO_WZ_MAX
+              value: "${WZ_MAX}"
+            - name: DEMO_PUSH
+              value: "${PUSH}"
+            - name: DEMO_PLAY_DIFFICULTY
+              value: "${PLAY_DIFFICULTY}"
+            - name: DEMO_SELFTEST
+              value: "0"
+          ports:
+            - name: viser
+              containerPort: 8080
+          startupProbe:               # first sim step within 15 min
+            exec:
+              command: ["test", "-f", "/tmp/heartbeat"]
+            periodSeconds: 10
+            failureThreshold: 90
+          livenessProbe:              # democtl touches /tmp/heartbeat every 50 sim steps
+            exec:
+              command: ["bash", "-c", "(( $(date +%s) - $(stat -c %Y /tmp/heartbeat) < 120 ))"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: promhook
+              mountPath: /opt/demo
+              readOnly: true
+            - name: logs
+              mountPath: /workspace/isaaclab/logs
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: promhook
+          configMap:
+            name: ${CONFIGMAP}
+        - name: logs
+          persistentVolumeClaim:
+            claimName: isaac-logs
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi

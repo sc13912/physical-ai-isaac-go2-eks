@@ -1,0 +1,44 @@
+# Kueue 0.20 (v1beta2). 4 GPUs of quota for training; a 5th job waits in the queue until one finishes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: isaac
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu
+spec:
+  nodeLabels:
+    workload: isaac            # NodePool gpu label (g6e/g7e single-GPU)
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: isaac-gpu
+spec:
+  namespaceSelector: {}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+      flavors:
+        - name: gpu
+          resources:
+            - name: cpu
+              nominalQuota: 56
+            - name: memory
+              nominalQuota: 400Gi
+            - name: nvidia.com/gpu
+              nominalQuota: 4
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: isaac-train
+  namespace: isaac
+spec:
+  clusterQueue: isaac-gpu

@@ -1,0 +1,71 @@
+# Rendered with envsubst ($AWS_ACCOUNT_ID $VPC_ID $SUBNET_2A $SUBNET_2B $ADMIN_CIDR). Based on the Karpenter v1.15
+# getting-started ClusterConfig; deltas: existing VPC private subnets, API endpoint limited to ADMIN_CIDR, EFS CSI add-on.
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: isaaclab-cluster
+  region: ap-northeast-2
+  version: "1.36"
+  tags:
+    karpenter.sh/discovery: isaaclab-cluster
+    project: physical-ai-eks
+
+kubeSchedulerConfig:
+  nodeResourcesFit:
+    scoringStrategy:
+      type: MostAllocated
+
+vpc:
+  id: ${VPC_ID}
+  subnets:
+    private:
+      ap-northeast-2a: { id: ${SUBNET_2A} }
+      ap-northeast-2b: { id: ${SUBNET_2B} }
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: true
+  publicAccessCIDRs: ["${ADMIN_CIDR}"]
+
+iam:
+  withOIDC: true
+  podIdentityAssociations:
+  - namespace: kube-system
+    serviceAccountName: karpenter
+    roleName: isaaclab-cluster-karpenter
+    permissionPolicyARNs:
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerNodeLifecyclePolicy-isaaclab-cluster
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerIAMIntegrationPolicy-isaaclab-cluster
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerEKSIntegrationPolicy-isaaclab-cluster
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerInterruptionPolicy-isaaclab-cluster
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerResourceDiscoveryPolicy-isaaclab-cluster
+    - arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerZonalShiftPolicy-isaaclab-cluster
+
+iamIdentityMappings:
+- arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/KarpenterNodeRole-isaaclab-cluster"
+  username: system:node:{{EC2PrivateDNSName}}
+  groups:
+  - system:bootstrappers
+  - system:nodes
+
+managedNodeGroups:
+- name: system
+  instanceType: m7i.xlarge
+  amiFamily: AmazonLinux2023
+  desiredCapacity: 2
+  minSize: 2
+  maxSize: 3
+  privateNetworking: true
+  volumeSize: 100
+  tags:
+    project: physical-ai-eks
+
+zonalShiftConfig:
+  enabled: true
+
+addons:
+- name: eks-pod-identity-agent
+- name: vpc-cni
+- name: coredns
+- name: kube-proxy
+- name: aws-efs-csi-driver
+  useDefaultPodIdentityAssociations: true

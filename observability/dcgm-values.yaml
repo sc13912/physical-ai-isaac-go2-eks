@@ -1,0 +1,9 @@
+# helm values for dcgm/dcgm-exporter 4.8.4 — GPU nodes only, no ServiceMonitor (no Prometheus Operator; AMP scraper discovers pods).
+serviceMonitor:
+  enabled: false
+nodeSelector:
+  nvidia.com/gpu.present: "true"
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule

@@ -1,0 +1,63 @@
+# Rendered with envsubst '$CLUSTER_SG $SUBNET_2A $SUBNET_2B $CAPACITY_RESERVATION_ID'. GPU pool: single-GPU g6e (L40S 48 GB, reserved) / g7e (RTX PRO 6000 96 GB), max 4 GPUs.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu
+spec:
+  role: KarpenterNodeRole-isaaclab-cluster
+  amiSelectorTerms:
+    - alias: al2023@v20261031          # AL2023 NVIDIA variant auto-selected for GPU types
+  subnetSelectorTerms:
+    - id: ${SUBNET_2A}                 # private 2a
+    - id: ${SUBNET_2B}                 # private 2b (reservation AZ)
+  capacityReservationSelectorTerms:   # g6e.4xlarge on-demand reservation(s) in ap-northeast-2b; one `- id:` per reservation; no reservation: delete these 2 lines
+    - id: ${CAPACITY_RESERVATION_ID}
+  securityGroupSelectorTerms:
+    - id: ${CLUSTER_SG}                # EKS cluster SG (same as the system nodegroup)
+  instanceStorePolicy: RAID0           # containerd + emptyDir on the 1.9 TB local NVMe
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+  metadataOptions:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  tags:
+    project: physical-ai-eks
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu
+spec:
+  template:
+    metadata:
+      labels:
+        nvidia.com/gpu.present: "true"   # lets the NVIDIA device plugin's default affinity match
+        workload: isaac
+    spec:
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["g6e.4xlarge", "g7e.4xlarge", "g7e.8xlarge"]   # 1 GPU each: L40S (reserved) or RTX PRO 6000 (on-demand if it ever appears)
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["reserved", "on-demand"]   # reservations first; never spot
+      taints:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu
+      expireAfter: Never
+  limits:
+    nvidia.com/gpu: "4"
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: Never   # reserved capacity bills either way; keep nodes + cached image warm
+    budgets:
+      - nodes: "0"            # Karpenter never voluntarily disrupts a GPU node (drift, consolidation)

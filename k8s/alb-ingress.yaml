@@ -1,0 +1,215 @@
+# Viewers behind an internet-facing ALB: HTTPS 443 only, Cognito sign-in on every request before anything is forwarded.
+# Render with an EXPLICIT variable list (the nginx config below uses $host/$http_upgrade, which must survive):
+#   envsubst '$CERT_ARN $PUBLIC_SUBNETS $COGNITO_POOL_ARN $COGNITO_CLIENT_ID $COGNITO_DOMAIN' < k8s/alb-ingress.yaml | kubectl apply -f -
+# Path: browser -> ALB (public 2a+2c) -> viewer-proxy (nginx: strips /play /train /obstacle /train-obstacle, proxies HTTP + WebSocket)
+#       -> ClusterIP Services -> Viser pods on 8080.
+apiVersion: v1
+kind: Service
+metadata:
+  name: viser-play
+  namespace: isaac
+spec:
+  selector:
+    app: isaac-play
+    robot: go2
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: viser-train
+  namespace: isaac
+spec:
+  selector:
+    app: isaac-train
+    robot: go2
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: viser-train-obstacle
+  namespace: isaac
+spec:
+  selector:
+    app: isaac-train
+    robot: go2obstacle
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: viser-obstacle
+  namespace: isaac
+spec:
+  selector:
+    app: isaac-play
+    robot: go2rough
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: viewer-proxy
+  namespace: isaac
+spec:
+  selector:
+    app: viewer-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: isaac-viewers
+  namespace: isaac
+  annotations:
+    alb.ingress.kubernetes.io/group.name: isaac-viewers
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/subnets: ${PUBLIC_SUBNETS}   # public 2a, public 2c
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'                                # no HTTP listener at all
+    alb.ingress.kubernetes.io/certificate-arn: ${CERT_ARN}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/auth-type: cognito
+    alb.ingress.kubernetes.io/auth-idp-cognito: '{"userPoolARN":"${COGNITO_POOL_ARN}","userPoolClientID":"${COGNITO_CLIENT_ID}","userPoolDomain":"${COGNITO_DOMAIN}"}'
+    alb.ingress.kubernetes.io/auth-scope: openid
+    alb.ingress.kubernetes.io/auth-on-unauthenticated-request: authenticate
+    alb.ingress.kubernetes.io/auth-session-timeout: '43200'
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600,routing.http.drop_invalid_header_fields.enabled=true
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/success-codes: '200'
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '10'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=10
+    alb.ingress.kubernetes.io/tags: project=physical-ai-eks
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /                     # one rule => every path, incl. /oauth2/idpresponse, passes the Cognito action
+            pathType: Prefix
+            backend:
+              service:
+                name: viewer-proxy
+                port:
+                  number: 8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: viewer-proxy
+  namespace: isaac
+data:
+  default.conf: |
+    map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+    server {
+      listen 8080;
+      large_client_header_buffers 4 32k;              # ALB auth cookie shards (up to 16 KB) arrive in one Cookie header
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_set_header Cookie "";                      # keep the ALB session cookie off the Viser pods
+      proxy_set_header X-Amzn-Oidc-Accesstoken "";     # and the Cognito access token
+      proxy_read_timeout 3600s;
+      proxy_send_timeout 3600s;
+
+      location = /healthz { access_log off; return 200 "ok\n"; }
+      location = / {
+        default_type text/html;
+        return 200 '<a href="/play/">play</a> | <a href="/train/">train</a> | <a href="/obstacle/">obstacle</a> | <a href="/train-obstacle/">train-obstacle</a>\n';
+      }
+      # Viser serves its page only at "/" and opens its WebSocket at the page path minus the trailing slash
+      # (/play/ -> wss://<alb>/play), so both forms map to upstream "/". Query strings (?websocket=...) pass through.
+      location = /play         { proxy_pass http://viser-play.isaac.svc.cluster.local:8080/; }
+      location /play/          { proxy_pass http://viser-play.isaac.svc.cluster.local:8080/; }
+      location = /train        { proxy_pass http://viser-train.isaac.svc.cluster.local:8080/; }
+      location /train/         { proxy_pass http://viser-train.isaac.svc.cluster.local:8080/; }
+      location = /obstacle     { proxy_pass http://viser-obstacle.isaac.svc.cluster.local:8080/; }
+      location /obstacle/      { proxy_pass http://viser-obstacle.isaac.svc.cluster.local:8080/; }
+      location = /train-obstacle { proxy_pass http://viser-train-obstacle.isaac.svc.cluster.local:8080/; }
+      location /train-obstacle/  { proxy_pass http://viser-train-obstacle.isaac.svc.cluster.local:8080/; }
+      location / { return 404; }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: viewer-proxy
+  namespace: isaac
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: viewer-proxy
+  template:
+    metadata:
+      labels:
+        app: viewer-proxy
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["ap-northeast-2a", "ap-northeast-2c"]   # ALB AZs; a target in 2b would be Target.NotInUse
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          image: public.ecr.aws/nginx/nginx-unprivileged:1.30.6-alpine   # uid 101, listens 8080, pid + temp paths in /tmp
+          env:
+            - name: NGINX_ENTRYPOINT_QUIET_LOGS
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: conf
+          configMap:
+            name: viewer-proxy
+        - name: tmp
+          emptyDir: {}
