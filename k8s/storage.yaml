@@ -1,0 +1,23 @@
+# Rendered with envsubst '$EFS_ID'. Shared RWX volume for TensorBoard logs + checkpoints of every run.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: ${EFS_ID}
+  directoryPerms: "700"
+  basePath: /isaac
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: isaac-logs
+  namespace: isaac
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 100Gi

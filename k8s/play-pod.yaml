@@ -1,0 +1,70 @@
+# Rendered with envsubst '$IMAGE $ROBOT $TASK $CHECKPOINT $SELFTEST $VX_MAX $VY_MAX $WZ_MAX $PUSH $PRESETS $PLAY_DIFFICULTY' (SELFTEST=1 drives every control once, else 0). Plays a trained policy in Viser and exports policy.onnx.
+# CHECKPOINT = latest | best | pretrained (NVIDIA's pre-trained policy — the no-training fallback).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: play-${ROBOT}
+  namespace: isaac
+  labels:
+    app: isaac-play
+    robot: ${ROBOT}
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    workload: isaac
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: play
+      image: ${IMAGE}
+      command: ["bash", "-c"]
+      args:
+        - >-
+          exec isaaclab play --rl_library rsl_rl --task ${TASK} --num_envs 16
+          --checkpoint ${CHECKPOINT} --real-time --viz viser --external_callback promhook.start ${PRESETS}
+      env:
+        - name: PYTHONPATH
+          value: /opt/demo
+        - name: DEMO_CONTROLS
+          value: "1"
+        - name: DEMO_VISIBLE_ENVS
+          value: "16"
+        - name: DEMO_VX_MAX        # joystick limits = the policy's trained command ranges
+          value: "${VX_MAX}"
+        - name: DEMO_VY_MAX
+          value: "${VY_MAX}"
+        - name: DEMO_WZ_MAX
+          value: "${WZ_MAX}"
+        - name: DEMO_PUSH          # push strength [m/s]
+          value: "${PUSH}"
+        - name: DEMO_PLAY_DIFFICULTY   # obstacle-course play stations only ("lo,hi"; default 0.35,0.55)
+          value: "${PLAY_DIFFICULTY}"
+        - name: DEMO_SELFTEST
+          value: "${SELFTEST}"
+      ports:
+        - name: viser
+          containerPort: 8080
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+      volumeMounts:
+        - name: promhook
+          mountPath: /opt/demo
+          readOnly: true
+        - name: logs
+          mountPath: /workspace/isaaclab/logs
+        - name: dshm
+          mountPath: /dev/shm
+  volumes:
+    - name: promhook
+      configMap:
+        name: promhook
+    - name: logs
+      persistentVolumeClaim:
+        claimName: isaac-logs
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi

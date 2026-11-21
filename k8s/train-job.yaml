@@ -1,0 +1,95 @@
+# Rendered with envsubst '$IMAGE $ROBOT $TASK $NUM_ENVS $MAX_ITER $VIZ $RUNS $TRAIN_FOCUS $VISIBLE_TILES'. RUNS=1 normal; RUNS=100000 = loop forever (live training view).
+# Self-heals: a failed run or a stalled sim loop (> ~6 min) restarts the container (OnFailure, up to backoffLimit times).
+# One Isaac Lab 3.0 kit-less training run (Newton physics, RSL-RL PPO) on one GPU, admitted by Kueue.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-${ROBOT}
+  namespace: isaac
+  labels:
+    kueue.x-k8s.io/queue-name: isaac-train
+    app: isaac-train
+    robot: ${ROBOT}
+spec:
+  suspend: true
+  backoffLimit: 1000
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: isaac-train
+        robot: ${ROBOT}
+    spec:
+      restartPolicy: OnFailure
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: train
+          image: ${IMAGE}
+          command: ["bash", "-c"]
+          args:
+            - >-
+              rm -f /tmp/heartbeat; for run in $(seq 1 ${RUNS}); do
+              isaaclab train --rl_library rsl_rl
+              --task ${TASK} --num_envs ${NUM_ENVS} --max_iterations ${MAX_ITER}
+              --run_name ${ROBOT} --external_callback promhook.start ${VIZ}
+              presets=newton_mjwarp || exit 1; done
+          env:
+            - name: PYTHONPATH
+              value: /opt/demo
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: METRICS_PORT
+              value: "9500"
+            - name: DEMO_CAMERA            # Viser "Camera" panel (only shows when --viz viser is on)
+              value: "1"
+            - name: DEMO_VISIBLE_ENVS
+              value: "32"
+            - name: DEMO_TRAIN_FOCUS       # obstacle course only, e.g. "stepping_stones=0.25,gaps=0.2" (unset/literal = stock mix)
+              value: "${TRAIN_FOCUS}"
+            - name: DEMO_VISIBLE_TILES     # obstacle course only: which tiles the viewer shows, "rows,cols" e.g. "2-3,8-11"; empty = centre block
+              value: "${VISIBLE_TILES}"
+          ports:
+            - name: metrics
+              containerPort: 9500
+            - name: viser
+              containerPort: 8080
+          startupProbe:               # first sim step within 15 min
+            exec:
+              command: ["test", "-f", "/tmp/heartbeat"]
+            periodSeconds: 10
+            failureThreshold: 90
+          livenessProbe:              # democtl touches /tmp/heartbeat every 50 sim steps; covers the gap between runs
+            exec:
+              command: ["bash", "-c", "(( $(date +%s) - $(stat -c %Y /tmp/heartbeat) < 300 ))"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "14"
+              memory: 100Gi
+              nvidia.com/gpu: "1"
+            limits:
+              memory: 100Gi
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: promhook
+              mountPath: /opt/demo
+              readOnly: true
+            - name: logs
+              mountPath: /workspace/isaaclab/logs
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: promhook
+          configMap:
+            name: promhook
+        - name: logs
+          persistentVolumeClaim:
+            claimName: isaac-logs
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
