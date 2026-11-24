@@ -1,0 +1,11 @@
+# GitHub Linguist language-detection overrides.
+#
+# Linguist classifies YAML and JSON as "data" and leaves them out of the language bar by default.
+# Count them, so the Kubernetes manifests, eksctl config and Grafana dashboard show up.
+*.yaml linguist-detectable=true
+*.yml  linguist-detectable=true
+*.json linguist-detectable=true
+
+# Not hand-written: keep these out of the stats.
+isaac/run-params/**     linguist-generated=true   # Isaac Lab's resolved run configs, written by the training runs
+infra/karpenter-cfn.yaml linguist-vendored=true   # upstream Karpenter CloudFormation template (README step 2 downloads it)
