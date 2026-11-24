@@ -6,6 +6,8 @@
 *.yml  linguist-detectable=true
 *.json linguist-detectable=true
 
-# Not hand-written: keep these out of the stats.
-isaac/run-params/**     linguist-generated=true   # Isaac Lab's resolved run configs, written by the training runs
-infra/karpenter-cfn.yaml linguist-vendored=true   # upstream Karpenter CloudFormation template (README step 2 downloads it)
+# Not hand-written, so kept out of the stats:
+# Isaac Lab's resolved run configs, written by the training runs
+isaac/run-params/** linguist-generated=true
+# upstream Karpenter CloudFormation template (README step 2 downloads it)
+infra/karpenter-cfn.yaml linguist-vendored=true
